@@ -5,21 +5,51 @@
 #include <QPainter>
 #include <QMouseEvent>
 #include <list>
+#include <cmath>
+#include <complex>
+
+struct selectable{
+    selectable() {}
+    virtual double distance(int x, int y) = 0;
+    virtual ~selectable() = default;
+};
+
+struct path_point : public QPoint, public selectable
+{
+    path_point(int x, int y) : QPoint(x, y), selectable() {}
+    double distance(int x, int y) override;
+    double _angle = 45.0;
+};
 
 class label_for_paint : public QLabel
 {
+    Q_OBJECT;
 
-    std::list <QPoint> points;
-    QPoint* getNearestPoint(int mouse_x, int mouse_y, double* distance);
-    QPoint* dragged = nullptr;
-    QPoint* near_cursor = nullptr;
-    QPoint* chosen = nullptr;
+    struct path_line : public selectable
+    {
+        path_point* p1 = nullptr;
+        path_point* p2 = nullptr;
+        path_line(path_point* p1, path_point* p2) : p1(p1), p2(p2) {}
+        double distance(int x, int y) override;
+    };
+    std::list <path_point> points;
+    path_point* dragged = nullptr;
+    selectable* near_cursor = nullptr;
+    path_point* chosen = nullptr;
+    std::_List_iterator<path_point> nearest_line = points.end();
+
+    path_point* getNearestPoint(int mouse_x, int mouse_y, double* distance);
+    std::_List_iterator<path_point> getNearestLine(int mouse_x, int mouse_y, double* distance);
+    void paintDots(QPainter &painter);
+    void paintLines(QPainter &painter);
 public:
     bool closed = false;
     bool circled = false;
     label_for_paint(QWidget *parent = nullptr, const Qt::WindowFlags &f = Qt::WindowFlags());
-    void paintDots(QPainter &painter);
-    void paintLines(QPainter &painter);
+
+Q_SIGNALS:
+    void show_dist_to_line(double arg);
+
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *ev) override;
