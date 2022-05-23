@@ -21,8 +21,6 @@ private slots:
 
     void on_circling_stateChanged(int arg1);
 
-    void show_dist_to_line(double arg);
-
 private:
     Ui::MainWindow* ui;
 };

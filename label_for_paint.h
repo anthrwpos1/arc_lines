@@ -18,7 +18,7 @@ struct path_point : public QPoint, public selectable
 {
     path_point(int x, int y) : QPoint(x, y), selectable() {}
     double distance(int x, int y) override;
-    double _angle = 45.0;
+    double _angle = M_PI / 4;
 };
 
 class label_for_paint : public QLabel
@@ -42,6 +42,9 @@ class label_for_paint : public QLabel
     std::_List_iterator<path_point> getNearestLine(int mouse_x, int mouse_y, double* distance);
     void paintDots(QPainter &painter);
     void paintLines(QPainter &painter);
+    void paintArc(QPainter &painter, const path_point& from, const path_point& to, const double angle, const int pnum = 36);
+    void paintArcs(QPainter &painter);
+    void calcAngles();
 public:
     bool closed = false;
     bool circled = false;

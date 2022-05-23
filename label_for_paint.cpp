@@ -1,5 +1,13 @@
 #include "label_for_paint.h"
 
+std::complex<double> normalize(const std::complex<double>& in)
+{
+    double re = in.real();
+    double im = in.imag();
+    double norm = 1 / sqrt(re * re + im * im);
+    return {re * norm, im * norm};
+}
+
 //определяет ближайшую точку, так-же возвращает расстояние до неё
 path_point *label_for_paint::getNearestPoint(int mouse_x, int mouse_y, double* distance)
 {
@@ -91,12 +99,84 @@ void label_for_paint::paintLines(QPainter &painter)
     }
 }
 
+void label_for_paint::paintArc(QPainter &painter, const path_point &from, const path_point &to, const double angle, const int pnum)
+{
+    std::complex<double> vec_from_to = {(double) (to.x() - from.x()),(double) (to.y() - from.y())};
+    std::complex<double> single_rotation = std::exp(std::complex<double>{0, 2*angle/pnum});
+    std::complex<double> complete_rotation = std::exp(std::complex<double>{0, 2*angle});
+    constexpr std::complex<double> I {1, 0};
+    std::complex<double> step_vector = vec_from_to * (I - single_rotation) / (I - complete_rotation);
+    std::complex<double> p1{(double) from.x(), (double) from.y()};
+    for (int i = 0; i < pnum; ++i)
+    {
+        auto p2 = p1 + step_vector;
+        step_vector = step_vector * single_rotation;
+        painter.drawLine(p1.real(), p1.imag(), p2.real(), p2.imag());
+        p1 = p2;
+    }
+}
+
+void label_for_paint::paintArcs(QPainter &painter)
+{
+    path_point* last = nullptr;
+    for (auto& p : points)
+    {
+        if (last)
+        {
+            paintArc(painter, p, *last, last->_angle);
+        }
+        last = &p;
+    }
+    if (closed && last) paintArc(painter, *last, points.front(), last->_angle);
+}
+
+void label_for_paint::calcAngles()
+{
+    path_point* prev_point = nullptr;
+    if (closed)
+    {
+        auto last_p_it = points.rbegin();
+        if (last_p_it != points.rend())
+        {
+            prev_point = &*last_p_it;
+        }
+    }
+    path_point* preprev_point = nullptr;
+    std::complex<double> next_vector;
+    std::complex<double> prev_vector;
+    double next_vector_length;
+    std::complex<double> prev_unit_vector;
+    std::complex<double> next_unit_vector;
+    for (auto& p : points)
+    {
+        if (prev_point)
+        {
+            prev_vector = next_vector;
+            next_vector = {(double) (p.x() - prev_point->x()), (double) (p.y() - prev_point->y())};
+            next_vector_length = std::abs(next_vector);
+            prev_unit_vector = next_unit_vector;
+            next_unit_vector = next_vector / next_vector_length;
+        }
+        if (preprev_point)
+        {
+            std::complex<double> rotation = prev_unit_vector / next_unit_vector;
+            //double rotation_magnutude = std::arg(rotation);
+            std::complex<double> old_angle = std::exp(std::complex<double>{0,preprev_point->_angle});
+            std::complex<double> next_angle = rotation / old_angle;
+            prev_point->_angle = std::arg(next_angle);
+        }
+        preprev_point = prev_point;
+        prev_point = &p;
+    }
+}
+
 //рисовалка
 void label_for_paint::paintEvent(QPaintEvent *)
 {
     QPainter painter(this);
     paintDots(painter);
-    paintLines(painter);
+    if (circled) paintArcs(painter);
+    else paintLines(painter);
 }
 
 void label_for_paint::mousePressEvent(QMouseEvent *ev)
@@ -106,9 +186,9 @@ void label_for_paint::mousePressEvent(QMouseEvent *ev)
         //курсор в свободном месте - добавить новую
         if (!near_cursor)
         {
-            points.insert(nearest_line, path_point(ev->x(), ev->y()));
-            chosen = &*points.rbegin();
-            return;
+            auto new_point_iterator = points.insert(nearest_line, path_point(ev->x(), ev->y()));
+            chosen = &*new_point_iterator;
+            near_cursor = chosen;
         }
         //курсор наведен в район существующей точки - захватить
         path_point* selected_point = dynamic_cast<path_point*>(near_cursor);
@@ -128,6 +208,7 @@ void label_for_paint::mousePressEvent(QMouseEvent *ev)
         }
         chosen = nullptr;
     }
+    calcAngles();
     repaint();
 }
 
@@ -141,7 +222,6 @@ void label_for_paint::mouseMoveEvent(QMouseEvent *ev)
     double ldist;
     auto was_nearest_line = nearest_line;
     nearest_line = getNearestLine(mouse_x, mouse_y, &ldist);
-    emit show_dist_to_line(ldist);
     if (was_nearest_line != nearest_line) need_update = true;
     if (dist < 10)//есть точка в районе 10 клеток от мышки - подсветить
     {
@@ -160,7 +240,11 @@ void label_for_paint::mouseMoveEvent(QMouseEvent *ev)
         dragged->setY(ev->y());
         need_update = true;
     }
-    if (need_update) repaint();
+    if (need_update)
+    {
+        calcAngles();
+        repaint();
+    }
 }
 
 void label_for_paint::mouseReleaseEvent(QMouseEvent *ev)
@@ -177,14 +261,6 @@ double path_point::distance(int m_x, int m_y)
     double dx = m_x - x();
     double dy = m_y - y();
     return sqrt(dx*dx+dy*dy);
-}
-
-std::complex<double> normalize(std::complex<double> in)
-{
-    double re = in.real();
-    double im = in.imag();
-    double norm = 1 / sqrt(re * re + im * im);
-    return {re * norm, im * norm};
 }
 
 double dot_complex(std::complex<double> left, std::complex<double> right)
